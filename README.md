@@ -13,9 +13,9 @@
 
 **"Your AI App's Redis is Broken — And You Don't Know It"**
 
-*A collaboration between [BetterDB](https://betterdb.com) and [Krish Naik Academy](https://www.youtube.com/@krishnaik06)*
+*A collaboration between [BetterDB](https://betterdb.com) and [Krish Naik](https://www.youtube.com/@krishnaik06)*
 
-[📺 Watch the Video](#) · [📖 Full Step-by-Step Guide](step-by-step.md) · [🌐 BetterDB](https://betterdb.com)
+[📺 Watch the Video](https://www.youtube.com/watch?v=Wh3k3CelSbQ) · [📖 Full Step-by-Step Guide](step-by-step.md) · [🌐 BetterDB](https://betterdb.com)
 
 </div>
 
@@ -93,6 +93,7 @@ REDIS_URL=redis://localhost:6379
 ```
 ```bash
 docker-compose up -d   # start Valkey
+docker-compose ps      # health check
 ```
 
 ### 3. Connect Redis to BetterDB cloud

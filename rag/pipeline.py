@@ -135,6 +135,8 @@ async def semantic_cache_lookup(query_embedding: list[float]) -> str | None:
     best_sim, best_response = 0.0, None
 
     for key in r.scan_iter("semantic_cache:*"):
+        if r.type(key) != "hash":
+            continue
         entry = r.hgetall(key)
         if not entry.get("embedding"):
             continue

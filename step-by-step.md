@@ -411,6 +411,76 @@ if cnt > 10:
 
 ---
 
+## Section 6b — Burst Test: Combined Rate Limit + Session Runaway
+
+**How this differs from Section 6:**
+
+| | Section 6 | Section 6b (Burst Test) |
+|---|---|---|
+| `session_id` | `"default"` | `"burst:test"` |
+| Purpose | Show 429 rate limit only | Show 429 + session memory growing simultaneously |
+| BetterDB signals | `rate:limit:*` keys | `rate:limit:*` AND `langchain:memory:session:burst:test` both change |
+| What you watch | Rate limit keys appear | Rate limit burst + session runaway in same test |
+
+**In one burst you see 3 features at once:**
+- **Feature 2** — `semantic:cache:*` grows (new unique queries cached, no TTL)
+- **Feature 3** — `langchain:memory:session:burst:test` memory grows (same key, bigger HASH)
+- **Feature 4** — queries 11–20 return `HTTP 429`
+
+### Run the burst test
+
+Paste entire block into terminal — all 20 fire simultaneously:
+
+```bash
+curl -s -X POST http://localhost:8000/query -H "Content-Type: application/json" -H "X-User-ID: demo" -d '{"query":"What is BetterDB?","session_id":"burst:test"}' &
+curl -s -X POST http://localhost:8000/query -H "Content-Type: application/json" -H "X-User-ID: demo" -d '{"query":"How does semantic cache work?","session_id":"burst:test"}' &
+curl -s -X POST http://localhost:8000/query -H "Content-Type: application/json" -H "X-User-ID: demo" -d '{"query":"What is RAG pipeline?","session_id":"burst:test"}' &
+curl -s -X POST http://localhost:8000/query -H "Content-Type: application/json" -H "X-User-ID: demo" -d '{"query":"What is agent memory observability?","session_id":"burst:test"}' &
+curl -s -X POST http://localhost:8000/query -H "Content-Type: application/json" -H "X-User-ID: demo" -d '{"query":"How does BetterDB detect TTL bugs?","session_id":"burst:test"}' &
+curl -s -X POST http://localhost:8000/query -H "Content-Type: application/json" -H "X-User-ID: demo" -d '{"query":"What is rate limiter abuse detection?","session_id":"burst:test"}' &
+curl -s -X POST http://localhost:8000/query -H "Content-Type: application/json" -H "X-User-ID: demo" -d '{"query":"How does HGETALL cause latency?","session_id":"burst:test"}' &
+curl -s -X POST http://localhost:8000/query -H "Content-Type: application/json" -H "X-User-ID: demo" -d '{"query":"What is persistent slowlog?","session_id":"burst:test"}' &
+curl -s -X POST http://localhost:8000/query -H "Content-Type: application/json" -H "X-User-ID: demo" -d '{"query":"How does BetterDB use MCP server?","session_id":"burst:test"}' &
+curl -s -X POST http://localhost:8000/query -H "Content-Type: application/json" -H "X-User-ID: demo" -d '{"query":"What Redis keys does a RAG app generate?","session_id":"burst:test"}' &
+curl -s -X POST http://localhost:8000/query -H "Content-Type: application/json" -H "X-User-ID: demo" -d '{"query":"What is TTL coverage percentage?","session_id":"burst:test"}' &
+curl -s -X POST http://localhost:8000/query -H "Content-Type: application/json" -H "X-User-ID: demo" -d '{"query":"How does BetterDB anomaly detection work?","session_id":"burst:test"}' &
+curl -s -X POST http://localhost:8000/query -H "Content-Type: application/json" -H "X-User-ID: demo" -d '{"query":"What is semantic similarity threshold?","session_id":"burst:test"}' &
+curl -s -X POST http://localhost:8000/query -H "Content-Type: application/json" -H "X-User-ID: demo" -d '{"query":"How to fix memory fragmentation in Redis?","session_id":"burst:test"}' &
+curl -s -X POST http://localhost:8000/query -H "Content-Type: application/json" -H "X-User-ID: demo" -d '{"query":"What is the difference between hot keys and stale keys?","session_id":"burst:test"}' &
+curl -s -X POST http://localhost:8000/query -H "Content-Type: application/json" -H "X-User-ID: demo" -d '{"query":"How does BetterDB compare to RedisInsight?","session_id":"burst:test"}' &
+curl -s -X POST http://localhost:8000/query -H "Content-Type: application/json" -H "X-User-ID: demo" -d '{"query":"What is LangChain memory runaway?","session_id":"burst:test"}' &
+curl -s -X POST http://localhost:8000/query -H "Content-Type: application/json" -H "X-User-ID: demo" -d '{"query":"How does embedding cosine similarity work?","session_id":"burst:test"}' &
+curl -s -X POST http://localhost:8000/query -H "Content-Type: application/json" -H "X-User-ID: demo" -d '{"query":"What is the INCR EXPIRE pattern for rate limiting?","session_id":"burst:test"}' &
+curl -s -X POST http://localhost:8000/query -H "Content-Type: application/json" -H "X-User-ID: demo" -d '{"query":"How does BetterDB help with AI observability?","session_id":"burst:test"}' &
+wait && echo "All 20 done"
+```
+
+### What to observe in BetterDB after Trigger Collection
+
+| Pattern | Change | Feature |
+|---|---|---|
+| `rate:limit:user:demo:minute` | Appears with **w/TTL=1**, Avg Idle ~10s | Feature 4 — burst detected |
+| `rate:limit:user:demo:hour` | Counter increments | Feature 4 — cumulative |
+| `langchain:memory:session:burst:test` | **Memory grows** (same key, bigger HASH) | Feature 3 — runaway |
+| `semantic:cache:*` | Count increases by unique queries | Feature 2 — unbounded cache |
+
+### Key insight — rate limit vs session memory
+
+```
+rate:limit:user:demo:minute   w/TTL=1  ← RESETS every 60s (correct design)
+langchain:memory:session:*    w/TTL=0  ← NEVER resets (the bug)
+```
+
+Rate limit = ephemeral by design. Session memory = permanent by mistake. BetterDB shows both in same dashboard row — `w/TTL` column tells the story.
+
+### Question to ask Claude Code
+
+```
+"Show me the burst:test session — how much memory has it accumulated vs the rate limit keys?"
+```
+
+---
+
 ## Section 7 — Feature 5: RAG Pipeline Latency Attribution
 
 **What it demonstrates:** HGETALL on large `rag:doc:*` keys is the Redis bottleneck in the RAG pipeline — not the LLM.
