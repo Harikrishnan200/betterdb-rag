@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import redis as redis_lib
-from openai import AsyncOpenAI
+from fastembed import TextEmbedding
+from groq import AsyncGroq
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -9,10 +10,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=False, extra="ignore")
 
-    openai_api_key: SecretStr
+    groq_api_key: SecretStr
     redis_url: str = "redis://localhost:6379"
-    openai_model: str = "gpt-4o-mini"
-    embedding_model: str = "text-embedding-3-small"
+    groq_model: str = "llama-3.3-70b-versatile"
+    # Local ONNX embedding model — runs on CPU, no API key, 384 dims.
+    embedding_model: str = "BAAI/bge-small-en-v1.5"
     chunk_size: int = 500
     chunk_overlap: int = 50
     cache_threshold: float = 0.85
@@ -22,7 +24,8 @@ class Settings(BaseSettings):
 
 _settings: Settings | None = None
 _redis: redis_lib.Redis | None = None
-_openai: AsyncOpenAI | None = None
+_groq: AsyncGroq | None = None
+_embedder: TextEmbedding | None = None
 
 
 def get_settings() -> Settings:
@@ -39,8 +42,21 @@ def get_redis() -> redis_lib.Redis:
     return _redis
 
 
-def get_openai() -> AsyncOpenAI:
-    global _openai
-    if _openai is None:
-        _openai = AsyncOpenAI(api_key=get_settings().openai_api_key.get_secret_value())
-    return _openai
+def get_groq() -> AsyncGroq:
+    global _groq
+    if _groq is None:
+        _groq = AsyncGroq(api_key=get_settings().groq_api_key.get_secret_value())
+    return _groq
+
+
+def get_embedder() -> TextEmbedding:
+    """Local embedding model. First call downloads ~130MB of ONNX weights, then caches."""
+    global _embedder
+    if _embedder is None:
+        _embedder = TextEmbedding(model_name=get_settings().embedding_model)
+    return _embedder
+
+
+def embed_texts(texts: list[str]) -> list[list[float]]:
+    """Synchronous local embedding. Returns one vector per input text."""
+    return [vec.tolist() for vec in get_embedder().embed(texts)]
